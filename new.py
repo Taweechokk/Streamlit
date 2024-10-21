@@ -149,6 +149,13 @@ def reset():
     save_to_history(st.session_state.original_dataframe)
     st.session_state.logs.append(f"Reset the dataframe to the original state")
 
+
+# ใช้ @st.cache_data สำหรับการโหลดข้อมูล
+@st.cache_data
+def load_data(uploaded_file):
+    df = pd.read_csv(uploaded_file)
+    return df
+
 # Initialize session state variables
 if 'history' not in st.session_state:
     st.session_state.history = []  # Track past versions for undo
@@ -168,68 +175,69 @@ page = st.sidebar.radio("Go to", ["File Upload", "Visualization","Correlation pl
 with st.sidebar:
     display_logs()
     
+
 if page == "File Upload":
     st.title("File Upload Page")
-    file_type = st.selectbox("Select File Type", ["AVEVA File","General File"])
+    file_type = st.selectbox("Select File Type", ["AVEVA File", "General File"])
     uploaded_file = st.file_uploader("Choose a file")
-    
-    if file_type == "General File" and uploaded_file is not None:
-        dataframe = pd.read_csv(uploaded_file)
-        col1, col2 = st.columns(2)
-        if col1.button("Submit"):
-            dataframe.to_csv('uploaded_file.csv', index=False)
-            st.success("General File has been submitted and saved successfully.")
-            st.session_state['file_uploaded'] = True
-            st.session_state.page = "Visualization"
-        if col2.button("Cancel"):
-            st.warning("File upload has been canceled.")
-            st.session_state['file_uploaded'] = False
-    
-    elif file_type == "AVEVA File" and uploaded_file is not None:
-        dataframe_original = pd.read_csv(uploaded_file)
-        
-        if 'df_head' not in st.session_state:
-            st.session_state.head = None
-        
-        # Extract column names from the original dataframe
-        head = dataframe_original.columns.tolist()
-        # Create an empty dataframe with those column names and store it in session state
-        st.session_state.df_head = pd.DataFrame(columns=head)
-        
-        
-        dataframe_original.columns = dataframe_original.iloc[1].values
-        dataframe = dataframe_original.iloc[4:, :]
-        
-    
-        # Save the first 4 rows
-        df_first_4_rows = dataframe_original.iloc[:4, :]
-        st.session_state['df_first_4_rows'] = df_first_4_rows
 
-        dataframe.rename(columns={'Extended Name':'DATETIME'}, inplace=True)
-        dataframe.reset_index(drop=True, inplace=True)
-        dataframe['DATETIME'] = pd.to_datetime(dataframe['DATETIME'])
-        dataframe = dataframe.apply(pd.to_numeric)
-        dataframe['DATETIME'] = pd.to_datetime(dataframe['DATETIME'])
+    if uploaded_file is not None:
+        if file_type == "General File":
+            dataframe = load_data(uploaded_file)
+            col1, col2 = st.columns(2)
+            if col1.button("Submit"):
+                dataframe.to_csv('uploaded_file.csv', index=False)
+                st.success("General File has been submitted and saved successfully.")
+                st.session_state['file_uploaded'] = True
+                st.session_state.page = "Visualization"
+            if col2.button("Cancel"):
+                st.warning("File upload has been canceled.")
+                st.session_state['file_uploaded'] = False
 
-        st.write("Preview of the uploaded AVEVA file:")
-        st.write(dataframe)
-        col1, col2 = st.columns(2)
-        if col1.button("Submit"):
-            dataframe.to_csv('uploaded_file.csv', index=False)
-            st.success("AVEVA File has been submitted and saved successfully.")
-            st.session_state['file_uploaded'] = True
-        if col2.button("Cancel"):
-            st.warning("File upload has been canceled.")
-            st.session_state['file_uploaded'] = False
-    
+        elif file_type == "AVEVA File":
+            dataframe_original = load_data(uploaded_file)
+            
+            if 'df_head' not in st.session_state:
+                st.session_state.head = None
+
+            head = dataframe_original.columns.tolist()
+            st.session_state.df_head = pd.DataFrame(columns=head)
+
+            dataframe_original.columns = dataframe_original.iloc[1].values
+            dataframe = dataframe_original.iloc[4:, :]
+
+            df_first_4_rows = dataframe_original.iloc[:4, :]
+            st.session_state['df_first_4_rows'] = df_first_4_rows
+
+            dataframe.rename(columns={'Extended Name': 'DATETIME'}, inplace=True)
+            dataframe.reset_index(drop=True, inplace=True)
+            dataframe['DATETIME'] = pd.to_datetime(dataframe['DATETIME'], errors='coerce')
+
+            numeric_columns = dataframe.select_dtypes(include=['object']).columns
+            dataframe[numeric_columns] = dataframe[numeric_columns].apply(pd.to_numeric, errors='coerce')
+
+            st.write("Preview of the uploaded AVEVA file:")
+            st.write(dataframe)
+            
+            col1, col2 = st.columns(2)
+            if col1.button("Submit"):
+                dataframe.to_csv('uploaded_file.csv', index=False)
+                st.success("AVEVA File has been submitted and saved successfully.")
+                st.session_state['file_uploaded'] = True
+            if col2.button("Cancel"):
+                st.warning("File upload has been canceled.")
+                st.session_state['file_uploaded'] = False
+
     if "file_uploaded" in st.session_state and st.session_state['file_uploaded']:
         st.success("File has been uploaded successfully.")
         st.session_state.page = "Visualization"
+        
         original_dataframe = pd.read_csv('uploaded_file.csv')
         if 'original_dataframe' not in st.session_state:
             st.session_state.original_dataframe = original_dataframe.copy()
             st.session_state.processed_dataframe = original_dataframe.copy()
-            if not st.session_state.history:
+
+            if not st.session_state.get('history', []):
                 save_to_history(st.session_state.original_dataframe)
                 st.rerun()
             
